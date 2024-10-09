@@ -1,0 +1,5 @@
+{
+    "python.analysis.extraPaths": [
+        "./soundAI/audioset_tagging_cnn/utils"
+    ]
+}
