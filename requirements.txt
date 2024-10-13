@@ -1,0 +1,7 @@
+pip install numpy
+pin install pandas
+pip install librosa
+pip install torchlibrosa
+pip install matplotlib
+pip install torch
+pip install h5py

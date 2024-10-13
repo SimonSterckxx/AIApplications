@@ -18,3 +18,6 @@ We are tasked with finding a way to reduce the average time to intervention in c
 ## Our Project's Objective:
 
 Our project focuses on implementing and evaluating existing AI models capable of detecting fall-related emergencies, including strokes. The models will analyze video footage in real-time, identifying incidents where a person has fallen, and then trigger alerts to emergency responders. By integrating these pre-trained models into a real-time system, we aim to enhance fall detection capabilities in various real-world environments.
+
+## Running the AI
+python pytorch/inference.py sound_event_detection --model_type="Cnn14_DecisionLevelMax" --checkpoint_path="Cnn14_DecisionLevelMax_mAP=0.385.pth" --audio_path="resources/R9_ZSCveAHg_7s.wav" --cuda
