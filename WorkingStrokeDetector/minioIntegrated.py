@@ -9,6 +9,7 @@ import math
 import time
 from ultralytics import YOLO
 import tempfile
+import threading
 
 minio_url = "193.191.177.33:22555"
 minio_user = "academic-weapons"
@@ -26,7 +27,6 @@ bucket_name = "eyes4rescue-academic-weapons"
 folder_prefix_neg = "movies/negative/"
 folder_prefix_pos = "movies/positive/"
 
-
 def list_minio_videos():
     video_files = {"Negative": [], "Positive": []}
     objects_neg = minio_client.list_objects(
@@ -43,7 +43,6 @@ def list_minio_videos():
 
     return video_files
 
-
 def generate_thumbnail(video_url):
     cap = cv2.VideoCapture(video_url)
     ret, frame = cap.read()
@@ -57,84 +56,149 @@ def generate_thumbnail(video_url):
         print(f"Failed to generate thumbnail for {video_url}")
         return None
 
+class VideoProcessor(threading.Thread):
+    def __init__(self, video_url, canvas, status_label, timer_label):
+        super().__init__()
+        self.video_url = video_url
+        self.canvas = canvas
+        self.status_label = status_label
+        self.timer_label = timer_label
+        self.running = True
+        self.cap = None
+        self.model = YOLO('yolov8s.pt')
+        self.classnames = []
+        with open('classes.txt', 'r') as f:
+            self.classnames = f.read().splitlines()
 
-def run_detection(selected_video):
+    def run(self):
+        self.cap = cv2.VideoCapture(self.video_url)
+        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+        total_time = total_frames / fps
+        lying_down_start_time = None
+        stroke_detected = False
+        lying_down_duration_threshold = 15
+        frame_skip = 5  # Process every 5th frame
+        frame_counter = 0  # Initialize a frame counter
+
+        while self.running:
+            ret, frame = self.cap.read()
+            if not ret:
+                print("Failed to capture frame from stream.")
+                break
+
+            # Increment the frame counter
+            frame_counter += 1
+
+            # Update timer label
+            elapsed_time = frame_counter / fps
+            remaining_time = total_time - elapsed_time
+            self.timer_label.config(text=f"Time Remaining: {max(0, int(remaining_time))} seconds")
+
+            # Resize frame while maintaining aspect ratio
+            height, width, _ = frame.shape
+            aspect_ratio = width / height
+            new_width = 980
+            new_height = int(new_width / aspect_ratio)
+            resized_frame = cv2.resize(frame, (new_width, new_height))
+
+            # Skip processing if we are not on the correct frame
+            if frame_counter % frame_skip != 0:
+                frame_rgb = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame_rgb)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.canvas.create_image(0, 0, anchor=tk.NW, image=imgtk)
+                self.canvas.imgtk = imgtk  # Keep a reference to avoid garbage collection
+                time.sleep(0.01)  # Small sleep for responsiveness
+                continue
+
+            # Process the frame
+            results = self.model(resized_frame)
+
+            # Draw bounding boxes and labels on the resized frame
+            for info in results:
+                parameters = info.boxes
+                for box in parameters:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    confidence = math.ceil(box.conf[0] * 100)
+                    class_detect = self.classnames[int(box.cls[0])]
+
+                    if confidence < 80 or class_detect != 'person':
+                        continue
+
+                    width_box, height_box = x2 - x1, y2 - y1
+                    cvzone.cornerRect(resized_frame, [x1, y1, width_box, height_box], l=30, rt=6)
+                    cvzone.putTextRect(resized_frame, f'{class_detect}', [x1 + 8, y1 - 12], thickness=2, scale=2)
+
+                    if height_box < width_box:
+                        cvzone.putTextRect(resized_frame, 'Fall Detected', [x1 + 8, y2 + 30], thickness=2, scale=2)
+
+                        if lying_down_start_time is None:
+                            lying_down_start_time = time.time()
+
+                        elif time.time() - lying_down_start_time > lying_down_duration_threshold:
+                            if not stroke_detected:  # Update status only once
+                                stroke_detected = True
+                                self.status_label.config(text="Stroke Detected!", fg="red")  # Update label to show stroke detected
+                            cvzone.putTextRect(resized_frame, 'Stroke Detected', [x1 + 8, y1 - 50], thickness=2, scale=2)
+
+                    else:
+                        lying_down_start_time = None
+                        stroke_detected = False
+
+            # Convert processed frame to PhotoImage
+            frame_rgb = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(frame_rgb)
+            imgtk = ImageTk.PhotoImage(image=img)
+
+            # Update the canvas with the new frame
+            self.canvas.create_image(0, 0, anchor=tk.NW, image=imgtk)
+            self.canvas.imgtk = imgtk  # Keep a reference to avoid garbage collection
+            time.sleep(0.01)  # Small sleep for responsiveness
+
+        self.cap.release()  # Release the video capture when done
+
+    def stop(self):
+        self.running = False
+        if self.cap:
+            self.cap.release()
+
+def run_detection(selected_video, canvas, status_label, timer_label, root):
     if not selected_video:
         messagebox.showerror("Error", "Please select a video.")
         return
 
+    # Stop any currently running video processor
+    if hasattr(run_detection, 'video_processor') and run_detection.video_processor.is_alive():
+        run_detection.video_processor.stop()
+        run_detection.video_processor.join()
+
     video_url = minio_client.presigned_get_object(bucket_name, selected_video)
-
-    cap = cv2.VideoCapture(video_url)
-    model = YOLO('yolov8s.pt')
-
-    classnames = []
-    with open('classes.txt', 'r') as f:
-        classnames = f.read().splitlines()
-
-    lying_down_start_time = None
-    stroke_detected = False
-    lying_down_duration_threshold = 15
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            print("Failed to capture frame from stream.")
-            break
-
-        frame = cv2.resize(frame, (980, 740))
-        results = model(frame)
-
-        for info in results:
-            parameters = info.boxes
-            for box in parameters:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                confidence = math.ceil(box.conf[0] * 100)
-                class_detect = classnames[int(box.cls[0])]
-
-                if confidence < 80 or class_detect != 'person':
-                    continue
-
-                width, height = x2 - x1, y2 - y1
-                cvzone.cornerRect(frame, [x1, y1, width, height], l=30, rt=6)
-                cvzone.putTextRect(frame, f'{class_detect}', [
-                                   x1 + 8, y1 - 12], thickness=2, scale=2)
-
-                if height < width:
-                    cvzone.putTextRect(frame, 'Fall Detected', [
-                                       x1 + 8, y2 + 30], thickness=2, scale=2)
-
-                    if lying_down_start_time is None:
-                        lying_down_start_time = time.time()
-
-                    elif time.time() - lying_down_start_time > lying_down_duration_threshold:
-                        stroke_detected = True
-                        cvzone.putTextRect(frame, 'Stroke Detected', [
-                                           x1 + 8, y1 - 50], thickness=2, scale=2)
-
-                else:
-                    lying_down_start_time = None
-                    stroke_detected = False
-
-        cv2.imshow('Video Detection', frame)
-
-        if cv2.waitKey(1) & 0xFF == ord('t'):
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-
+    run_detection.video_processor = VideoProcessor(video_url, canvas, status_label, timer_label)
+    run_detection.video_processor.start()
 
 def create_tkinter_window(video_files):
     root = tk.Tk()
     root.title("Select Video for Fall Detection")
 
+    # Create a Canvas for video playback
+    canvas = tk.Canvas(root, width=980, height=740)
+    canvas.grid(row=0, column=1, padx=10, pady=10)  # Center the canvas between columns
+
+    # Status label for stroke detection
+    status_label = tk.Label(root, text="", font=("Helvetica", 16))
+    status_label.grid(row=1, column=1, padx=10, pady=10)  # Place status label below the canvas
+
+    # Timer label for showing remaining video time
+    timer_label = tk.Label(root, text="Time Remaining: 0 seconds", font=("Helvetica", 14))
+    timer_label.grid(row=2, column=1, padx=10, pady=5)  # Place timer label below the status label
+
     # Frames for Negative and Positive video thumbnails
     frame_neg = tk.Frame(root)
-    frame_neg.pack(side=tk.LEFT, padx=10, pady=10)
+    frame_neg.grid(row=0, column=0, padx=10, pady=10)
 
     frame_pos = tk.Frame(root)
-    frame_pos.pack(side=tk.RIGHT, padx=10, pady=10)
+    frame_pos.grid(row=0, column=2, padx=10, pady=10)
 
     tk.Label(frame_neg, text="Negative Videos").pack()
     tk.Label(frame_pos, text="Positive Videos").pack()
@@ -143,51 +207,31 @@ def create_tkinter_window(video_files):
     thumbnails_neg = []
     thumbnails_pos = []
 
-    # Create a temporary directory to store the downloaded videos (if needed)
-    temp_dir = tempfile.mkdtemp()
-
     # Display thumbnails for negative videos
     for video in video_files["Negative"]:
         video_url = minio_client.presigned_get_object(bucket_name, video)
-
-        # Generate thumbnail
         thumbnail = generate_thumbnail(video_url)
         if thumbnail:
             label = tk.Label(frame_neg, image=thumbnail)
             label.pack()
-
-            # Store the thumbnail in the list to prevent it from being garbage-collected
             thumbnails_neg.append(thumbnail)
-
-            # Add the title below the thumbnail
             title_label = tk.Label(frame_neg, text=os.path.basename(video))
             title_label.pack()
-
-            # Bind a click event to run detection on the selected video
-            label.bind("<Button-1>", lambda e, v=video: run_detection(v))
+            label.bind("<Button-1>", lambda e, v=video: run_detection(v, canvas, status_label, timer_label, root))
 
     # Display thumbnails for positive videos
     for video in video_files["Positive"]:
         video_url = minio_client.presigned_get_object(bucket_name, video)
-
-        # Generate thumbnail
         thumbnail = generate_thumbnail(video_url)
         if thumbnail:
             label = tk.Label(frame_pos, image=thumbnail)
             label.pack()
-
-            # Store the thumbnail in the list to prevent it from being garbage-collected
             thumbnails_pos.append(thumbnail)
-
-            # Add the title below the thumbnail
             title_label = tk.Label(frame_pos, text=os.path.basename(video))
             title_label.pack()
-
-            # Bind a click event to run detection on the selected video
-            label.bind("<Button-1>", lambda e, v=video: run_detection(v))
+            label.bind("<Button-1>", lambda e, v=video: run_detection(v, canvas, status_label, timer_label, root))
 
     root.mainloop()
-
 
 # Main Program
 if __name__ == "__main__":
