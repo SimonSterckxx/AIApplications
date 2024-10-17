@@ -1,12 +1,14 @@
 import os
 import tkinter as tk
-from tkinter import Listbox, Scrollbar, messagebox
+from tkinter import Listbox, Scrollbar, messagebox, PhotoImage
+from PIL import Image, ImageTk
 from minio import Minio
 import cv2
 import cvzone
 import math
 import time
 from ultralytics import YOLO
+import tempfile
 
 minio_url = "193.191.177.33:22555"
 minio_user = "academic-weapons"
@@ -40,6 +42,20 @@ def list_minio_videos():
             video_files["Positive"].append(obj.object_name)
 
     return video_files
+
+
+def generate_thumbnail(video_url):
+    cap = cv2.VideoCapture(video_url)
+    ret, frame = cap.read()
+
+    if ret:
+        thumbnail = cv2.resize(frame, (150, 100))
+        thumbnail_image = Image.fromarray(
+            cv2.cvtColor(thumbnail, cv2.COLOR_BGR2RGB))
+        return ImageTk.PhotoImage(thumbnail_image)
+    else:
+        print(f"Failed to generate thumbnail for {video_url}")
+        return None
 
 
 def run_detection(selected_video):
@@ -113,6 +129,7 @@ def create_tkinter_window(video_files):
     root = tk.Tk()
     root.title("Select Video for Fall Detection")
 
+    # Frames for Negative and Positive video thumbnails
     frame_neg = tk.Frame(root)
     frame_neg.pack(side=tk.LEFT, padx=10, pady=10)
 
@@ -122,37 +139,57 @@ def create_tkinter_window(video_files):
     tk.Label(frame_neg, text="Negative Videos").pack()
     tk.Label(frame_pos, text="Positive Videos").pack()
 
-    listbox_neg = Listbox(frame_neg)
-    listbox_neg.pack()
+    # Dictionary to hold thumbnail images (to prevent garbage collection)
+    thumbnails_neg = []
+    thumbnails_pos = []
 
+    # Create a temporary directory to store the downloaded videos (if needed)
+    temp_dir = tempfile.mkdtemp()
+
+    # Display thumbnails for negative videos
     for video in video_files["Negative"]:
-        listbox_neg.insert(tk.END, video)
+        video_url = minio_client.presigned_get_object(bucket_name, video)
 
-    listbox_pos = Listbox(frame_pos)
-    listbox_pos.pack()
+        # Generate thumbnail
+        thumbnail = generate_thumbnail(video_url)
+        if thumbnail:
+            label = tk.Label(frame_neg, image=thumbnail)
+            label.pack()
 
+            # Store the thumbnail in the list to prevent it from being garbage-collected
+            thumbnails_neg.append(thumbnail)
+
+            # Add the title below the thumbnail
+            title_label = tk.Label(frame_neg, text=os.path.basename(video))
+            title_label.pack()
+
+            # Bind a click event to run detection on the selected video
+            label.bind("<Button-1>", lambda e, v=video: run_detection(v))
+
+    # Display thumbnails for positive videos
     for video in video_files["Positive"]:
-        listbox_pos.insert(tk.END, video)
+        video_url = minio_client.presigned_get_object(bucket_name, video)
 
-    def on_select():
-        selected_video_neg = listbox_neg.curselection()
-        selected_video_pos = listbox_pos.curselection()
+        # Generate thumbnail
+        thumbnail = generate_thumbnail(video_url)
+        if thumbnail:
+            label = tk.Label(frame_pos, image=thumbnail)
+            label.pack()
 
-        if selected_video_neg:
-            video = listbox_neg.get(selected_video_neg)
-            run_detection(video)
-        elif selected_video_pos:
-            video = listbox_pos.get(selected_video_pos)
-            run_detection(video)
-        else:
-            messagebox.showerror("Error", "Please select a video.")
+            # Store the thumbnail in the list to prevent it from being garbage-collected
+            thumbnails_pos.append(thumbnail)
 
-    run_button = tk.Button(root, text="Run Detection", command=on_select)
-    run_button.pack()
+            # Add the title below the thumbnail
+            title_label = tk.Label(frame_pos, text=os.path.basename(video))
+            title_label.pack()
+
+            # Bind a click event to run detection on the selected video
+            label.bind("<Button-1>", lambda e, v=video: run_detection(v))
 
     root.mainloop()
 
 
+# Main Program
 if __name__ == "__main__":
     video_files = list_minio_videos()
     if video_files["Negative"] or video_files["Positive"]:
