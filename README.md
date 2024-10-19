@@ -21,3 +21,8 @@ Our project focuses on implementing and evaluating existing AI models capable of
 
 ## Running the AI
 python pytorch/inference.py sound_event_detection --model_type="Cnn14_DecisionLevelMax" --checkpoint_path="Cnn14_DecisionLevelMax_mAP=0.385.pth" --audio_path="resources/R9_ZSCveAHg_7s.wav" --cuda
+
+
+## Sources:
+We got the idea of using pre-trained YOLOv8 models from this video, showcasing an example on how its used for fall detection:
+https://www.youtube.com/watch?v=wrhfMF4uqj8&t=376s
