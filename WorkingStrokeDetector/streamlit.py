@@ -1,19 +1,51 @@
 import streamlit as st
+import json
+import os
 
+# Read statistics from the JSON file
+stats = {
+    "total_falls_detected": 0,
+    "total_false_alarms": 0,
+    "total_missed_falls": 0
+}
 
-def main():
-    st.title("Fall Detection Dashboard")
-    st.write("This dashboard shows real-time statistics.")
+# Check if the stats.json file exists and load the data if it does
+if os.path.exists("stats.json"):
+    with open("stats.json", "r") as f:
+        stats = json.load(f)
 
-    # Example charts and metrics
-    precision = 100
-    recall = 66.67
-    false_alert_rate = 0.0
+total_falls_detected = stats["total_falls_detected"]
+total_false_alarms = stats["total_false_alarms"]
+total_missed_falls = stats["total_missed_falls"]
 
-    st.metric(label="Precision", value=f"{precision}%")
-    st.metric(label="Recall", value=f"{recall}%")
-    st.metric(label="False Alert Rate", value=f"{false_alert_rate}%")
+# Display the statistics in Streamlit
+st.title("Fall Detection Statistics")
+st.metric("Total Falls Detected", total_falls_detected)
+st.metric("False Alarms", total_false_alarms)
+st.metric("Missed Falls", total_missed_falls)
 
+# Calculate precision, recall, and F1-score
+if total_falls_detected + total_false_alarms > 0:
+    precision = total_falls_detected / \
+        (total_falls_detected + total_false_alarms)
+else:
+    precision = 0.0
 
-if __name__ == "__main__":
-    main()
+if total_falls_detected + total_missed_falls > 0:
+    recall = total_falls_detected / (total_falls_detected + total_missed_falls)
+else:
+    recall = 0.0
+
+if precision + recall > 0:
+    f1_score = 2 * (precision * recall) / (precision + recall)
+else:
+    f1_score = 0.0
+
+st.subheader("Precision")
+st.write(f"{precision:.2f}")
+
+st.subheader("Recall")
+st.write(f"{recall:.2f}")
+
+st.subheader("F1-Score")
+st.write(f"{f1_score:.2f}")

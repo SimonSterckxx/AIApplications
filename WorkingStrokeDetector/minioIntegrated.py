@@ -11,6 +11,7 @@ from ultralytics import YOLO
 import threading
 import subprocess
 import webview
+import json
 
 # MinIO Configuration
 minio_url = "193.191.177.33:22555"
@@ -73,13 +74,21 @@ class VideoProcessor(threading.Thread):
         self.timer_label = timer_label
         self.running = True
         self.cap = None
-        self.model = YOLO('yolov8s.pt')
+        self.model = YOLO('yolov8s.pt')  # Load YOLOv8 model
         self.classnames = []
         self.true_positives = 0
         self.false_positives = 0
         self.false_negatives = 0
         with open('classes.txt', 'r') as f:
             self.classnames = f.read().splitlines()
+
+        # Custom statistics for the streamlit page
+        self.total_falls_detected = 0
+        self.total_false_alarms = 0
+        self.total_missed_falls = 0
+        self.lying_down_start_time = None
+        self.stroke_detected = False
+        self.lying_down_duration_threshold = 15  # seconds
 
     def run(self):
         self.cap = cv2.VideoCapture(self.video_url)
@@ -96,6 +105,7 @@ class VideoProcessor(threading.Thread):
             ret, frame = self.cap.read()
             if not ret:
                 print("Failed to capture frame from stream.")
+                self.stop()
                 break
 
             # Increment the frame counter
@@ -126,6 +136,7 @@ class VideoProcessor(threading.Thread):
 
             # Process the frame
             results = self.model(resized_frame)
+            detected_fall = False
 
             # Draw bounding boxes and labels on the resized frame
             for info in results:
@@ -147,6 +158,7 @@ class VideoProcessor(threading.Thread):
                     if height_box < width_box:
                         cvzone.putTextRect(resized_frame, 'Fall Detected', [
                                            x1 + 8, y2 + 30], thickness=2, scale=2)
+                        self.total_falls_detected += 1
 
                         if lying_down_start_time is None:
                             lying_down_start_time = time.time()
@@ -174,9 +186,34 @@ class VideoProcessor(threading.Thread):
             self.canvas.imgtk = imgtk  # Keep a reference to avoid garbage collection
             time.sleep(0.01)  # Small sleep for responsiveness
 
+            # False Positive (fall detected but it wasn't an actual fall)
+            if detected_fall and not self.stroke_detected:
+                self.false_positives += 1
+                self.total_false_alarms += 1
+
+            # False Negative (fall missed)
+            if not detected_fall and self.stroke_detected:
+                self.false_negatives += 1
+                self.total_missed_falls += 1
+
         self.cap.release()  # Release the video capture when done
 
+    def save_statistics(self):
+        stats = {
+            "total_falls_detected": self.total_falls_detected,
+            "total_false_alarms": self.total_false_alarms,
+            "total_missed_falls": self.total_missed_falls,
+            "true_positives": self.true_positives,
+            "false_positives": self.false_positives,
+            "false_negatives": self.false_negatives
+        }
+        print("Saving statistics:", stats)  # Debugging line
+        with open("stats.json", "w") as f:
+            json.dump(stats, f)
+
     def stop(self):
+        print("Stopping video processor...")
+        self.save_statistics()
         self.running = False
         if self.cap:
             self.cap.release()
@@ -208,13 +245,17 @@ def run_detection(selected_video, canvas, status_label, timer_label, root):
 
     # Stop any currently running video processor
     if hasattr(run_detection, 'video_processor') and run_detection.video_processor.is_alive():
-        run_detection.video_processor.stop()
-        run_detection.video_processor.join()
+        # Debugging line
+        print("Stopping the currently running video processor...")
+        run_detection.video_processor.stop()  # Call stop to end the video
+        run_detection.video_processor.join()  # Wait for the thread to finish
 
+    # Start the new video processor
     video_url = minio_client.presigned_get_object(bucket_name, selected_video)
     run_detection.video_processor = VideoProcessor(
         video_url, canvas, status_label, timer_label)
     run_detection.video_processor.start()
+    print("Started new video processor.")  # Log the new video start
 
 
 # Tkinter window creation and video selection
