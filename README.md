@@ -26,3 +26,7 @@ python pytorch/inference.py sound_event_detection --model_type="Cnn14_DecisionLe
 ## Sources:
 We got the idea of using pre-trained YOLOv8 models from this video, showcasing an example on how its used for fall detection:
 https://www.youtube.com/watch?v=wrhfMF4uqj8&t=376s
+
+
+## Labeles from MinIO videos
+https://drive.google.com/drive/folders/1bizKvsC0cQ_Bd1YjOoxAP7IoG2rqSNhZ?usp=sharing

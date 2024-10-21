@@ -1,0 +1,78 @@
+{
+    "task_fallbehindobject.mp4_annotations_2024_10_20_16_27_45_yolo 1.1": {
+        "fall_intervals": [
+            [
+                24,
+                1586
+            ]
+        ],
+        "stroke_intervals": [
+            [
+                474,
+                1586
+            ]
+        ]
+    },
+    "task_fallingawayfromcamera.mp4_annotations_2024_10_20_16_58_11_yolo 1.1": {
+        "fall_intervals": [
+            [
+                134,
+                1300
+            ]
+        ],
+        "stroke_intervals": [
+            [
+                494,
+                1301
+            ]
+        ]
+    },
+    "task_personwalkingback.mp4_annotations_2024_10_20_14_38_07_yolo 1.1": {
+        "fall_intervals": [],
+        "stroke_intervals": []
+    },
+    "task_personwalkingfront.mp4_annotations_2024_10_20_14_20_58_yolo 1.1": {
+        "fall_intervals": [],
+        "stroke_intervals": []
+    },
+    "task_sitting.mp4_annotations_2024_10_20_14_47_36_yolo 1.1": {
+        "fall_intervals": [],
+        "stroke_intervals": []
+    },
+    "task_stroke_simulation_1.mp4_annotations_2024_10_21_10_24_25_yolo 1.1": {
+        "fall_intervals": [
+            [
+                225,
+                619
+            ]
+        ],
+        "stroke_intervals": []
+    },
+    "task_stroke_simulation_2.mp4_annotations_2024_10_21_09_58_29_yolo 1.1": {
+        "fall_intervals": [
+            [
+                268,
+                1291
+            ]
+        ],
+        "stroke_intervals": [
+            [
+                715,
+                1291
+            ]
+        ]
+    },
+    "task_stumblingandgettingbackup.mp4_annotations_2024_10_20_15_25_49_yolo 1.1": {
+        "fall_intervals": [
+            [
+                209,
+                424
+            ]
+        ],
+        "stroke_intervals": []
+    },
+    "task_tyingshoelaces.mp4_annotations_2024_10_20_13_57_56_yolo 1.1": {
+        "fall_intervals": [],
+        "stroke_intervals": []
+    }
+}
